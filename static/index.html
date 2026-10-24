@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Queue Token System</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--mute:#667085;--pri:#2f5bea;--ok:#12a150;--warn:#d98e04;--bad:#d92d20;--line:#e3e7ef}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--pri);color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:20px}
+header p{margin:2px 0 0;font-size:13px;opacity:.85}
+nav{display:flex;gap:6px;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav button{border:0;background:none;padding:8px 14px;border-radius:8px;font-size:14px;cursor:pointer;color:var(--mute);font-weight:600}
+nav button.active{background:var(--pri);color:#fff}
+main{max-width:980px;margin:20px auto;padding:0 16px}
+section{display:none}
+section.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:17px}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:15px;background:#fff}
+.btn{border:0;background:var(--pri);color:#fff;padding:10px 16px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(.93)}
+.btn.ok{background:var(--ok)}.btn.warn{background:var(--warn)}.btn.bad{background:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.token{text-align:center}
+.token .num{font-size:56px;font-weight:800;letter-spacing:2px;color:var(--pri)}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase}
+.s-waiting{background:var(--warn)}.s-serving{background:var(--ok)}.s-completed{background:#475467}.s-skipped,.s-cancelled{background:var(--bad)}
+.p-emergency{color:var(--bad);font-weight:700}.p-senior,.p-disabled{color:var(--warn);font-weight:700}
+.msg{padding:10px 12px;border-radius:8px;margin-top:10px;font-size:14px}
+.msg.err{background:#fee4e2;color:#912018}.msg.good{background:#d1fadf;color:#05603a}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-size:12px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.big{font-size:34px;font-weight:800;color:var(--pri)}
+.mute{color:var(--mute);font-size:13px}
+.serve{background:#e8f7ee;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:700;display:flex;justify-content:space-between}
+.stat{text-align:center}.stat .big{display:block}
+</style>
+</head>
+<body>
+<header><h1>Smart Queue Token System</h1><p>Priority-aware queue with live wait-time estimates</p></header>
+<nav id="tabs">
+  <button data-tab="get">Get Token</button>
+  <button data-tab="track">Track Token</button>
+  <button data-tab="staff">Staff Counter</button>
+  <button data-tab="board">Display Board</button>
+  <button data-tab="stats">Statistics</button>
+</nav>
+<main>
+<section id="get">
+  <div class="card">
+    <h2>Get a new token</h2>
+    <label for="g-name">Your name</label><input id="g-name" placeholder="Enter your name" maxlength="60">
+    <label for="g-phone">Phone (optional)</label><input id="g-phone" placeholder="Phone number" maxlength="20">
+    <div class="row">
+      <div><label for="g-service">Service</label><select id="g-service"></select></div>
+      <div><label for="g-priority">Priority</label>
+        <select id="g-priority">
+          <option value="normal">Normal</option>
+          <option value="senior">Senior citizen</option>
+          <option value="disabled">Differently abled</option>
+          <option value="emergency">Emergency</option>
+        </select></div>
+    </div>
+    <div class="actions"><button class="btn" id="g-submit">Generate Token</button></div>
+    <div id="g-msg"></div>
+  </div>
+</section>
+
+<section id="track">
+  <div class="card">
+    <h2>Track your token</h2>
+    <div class="row">
+      <input id="t-number" placeholder="Enter token number, e.g. G001">
+      <button class="btn" id="t-find" style="flex:0 0 auto">Find</button>
+    </div>
+    <div id="t-msg"></div>
+  </div>
+  <div id="t-result"></div>
+</section>
+
+<section id="staff">
+  <div class="card">
+    <h2>Counter control</h2>
+    <div class="row">
+      <div><label for="s-service">Service</label><select id="s-service"></select></div>
+      <div><label for="s-counter">Counter no.</label><select id="s-counter"></select></div>
+    </div>
+    <div class="actions"><button class="btn ok" id="s-call">Call Next Token</button></div>
+    <div id="s-msg"></div>
+  </div>
+  <div class="card"><h2>Now serving at this counter</h2><div id="s-current" class="mute">Nothing</div></div>
+  <div class="card"><h2>Waiting queue (smart order)</h2><div id="s-queue"></div></div>
+</section>
+
+<section id="board">
+  <div class="card"><label style="margin:0"><input type="checkbox" id="b-voice" style="width:auto"> Announce called tokens by voice</label></div>
+  <div class="grid" id="b-grid"></div>
+  <div class="card" style="margin-top:16px"><h2>Recently called</h2><div id="b-recent"></div></div>
+</section>
+
+<section id="stats">
+  <div class="grid" id="st-grid"></div>
+  <div class="card" style="margin-top:16px"><h2>Tokens by service (today)</h2><div id="st-svc"></div></div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function api(path, method, body) {
+  const res = await fetch("/api" + path, {
+    method: method || "GET",
+    headers: {"Content-Type": "application/json"},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+function showMsg(sel, text, good) {
+  $(sel).innerHTML = text ? '<div class="msg ' + (good ? "good" : "err") + '">' + esc(text) + "</div>" : "";
+}
+function prLabel(p) { return {normal:"Normal", senior:"Senior", disabled:"Differently abled", emergency:"Emergency"}[p] || p; }
+
+// ---------- Tabs ----------
+let current = "get", lastCalledId = null, firstBoard = true;
+function showTab(name) {
+  current = name;
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === name));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  location.hash = name;
+  refresh();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// ---------- Get token ----------
+function tokenCard(t) {
+  let info = "";
+  if (t.status === "waiting") {
+    info = "<p><b>Position " + t.position + "</b> in queue &middot; " + t.ahead + " ahead of you</p>" +
+           "<p>Estimated wait: <b>" + (t.ahead === 0 ? "You are next!" : "~" + t.eta_minutes + " min") + "</b></p>";
+  } else if (t.status === "serving") {
+    info = '<p style="font-size:20px"><b>Please go to Counter ' + esc(t.counter) + "</b></p>";
+  } else {
+    info = "<p class='mute'>This token is " + esc(t.status) + ".</p>";
+  }
+  const cancel = t.status === "waiting" ? '<div class="actions" style="justify-content:center"><button class="btn bad" onclick="cancelToken(' + t.id + ')">Cancel Token</button></div>' : "";
+  return '<div class="card token"><div class="mute">' + esc(t.service_name) + "</div>" +
+    '<div class="num">' + esc(t.number) + "</div>" +
+    '<span class="badge s-' + esc(t.status) + '">' + esc(t.status) + "</span>" +
+    '<p class="mute">' + esc(t.name) + " &middot; <span class='p-" + esc(t.priority) + "'>" + prLabel(t.priority) + "</span></p>" +
+    info + cancel + "</div>";
+}
+$("#g-submit").onclick = async () => {
+  try {
+    const t = await api("/tokens", "POST", {
+      name: $("#g-name").value, phone: $("#g-phone").value,
+      service_id: $("#g-service").value, priority: $("#g-priority").value
+    });
+    localStorage.setItem("sq_token", t.number);
+    $("#t-number").value = t.number;
+    showMsg("#g-msg", "Token " + t.number + " generated! Opening tracker...", true);
+    setTimeout(() => { showMsg("#g-msg", ""); showTab("track"); }, 800);
+  } catch (e) { showMsg("#g-msg", e.message); }
+};
+
+// ---------- Track ----------
+async function loadTrack() {
+  const num = $("#t-number").value.trim();
+  if (!num) { $("#t-result").innerHTML = ""; return; }
+  try {
+    const t = await api("/tokens/lookup?number=" + encodeURIComponent(num));
+    $("#t-result").innerHTML = tokenCard(t);
+    showMsg("#t-msg", "");
+  } catch (e) { $("#t-result").innerHTML = ""; showMsg("#t-msg", e.message); }
+}
+$("#t-find").onclick = loadTrack;
+$("#t-number").addEventListener("keydown", e => { if (e.key === "Enter") loadTrack(); });
+async function cancelToken(id) {
+  if (!confirm("Cancel this token?")) return;
+  try { await api("/tokens/" + id + "/cancel", "POST"); loadTrack(); } catch (e) { showMsg("#t-msg", e.message); }
+}
+
+// ---------- Staff ----------
+async function loadStaff() {
+  const sid = $("#s-service").value, counter = $("#s-counter").value;
+  if (!sid || !counter) return;
+  try {
+    const cur = await api("/counter/" + counter);
+    $("#s-current").innerHTML = cur
+      ? '<div style="font-size:30px;font-weight:800">' + esc(cur.number) + "</div><div>" + esc(cur.name) + " &middot; " + prLabel(cur.priority) + " &middot; " + esc(cur.service_name) + "</div>" +
+        '<div class="actions"><button class="btn ok" onclick="act(' + cur.id + ',\'complete\')">Complete</button><button class="btn warn" onclick="act(' + cur.id + ',\'skip\')">Skip / No-show</button></div>'
+      : "Nothing - this counter is free.";
+    const q = await api("/queue?service_id=" + sid);
+    $("#s-queue").innerHTML = q.length
+      ? "<table><tr><th>#</th><th>Token</th><th>Name</th><th>Priority</th><th>Waited</th><th>ETA</th></tr>" +
+        q.map(r => "<tr><td>" + r.position + "</td><td><b>" + esc(r.number) + "</b></td><td>" + esc(r.name) + "</td><td class='p-" + esc(r.priority) + "'>" + prLabel(r.priority) + "</td><td>" + r.waited_minutes + " min</td><td>" + r.eta_minutes + " min</td></tr>").join("") + "</table>"
+      : '<span class="mute">No one is waiting.</span>';
+  } catch (e) { showMsg("#s-msg", e.message); }
+}
+async function act(id, action) {
+  try { await api("/tokens/" + id + "/" + action, "POST"); showMsg("#s-msg", ""); loadStaff(); } catch (e) { showMsg("#s-msg", e.message); }
+}
+$("#s-call").onclick = async () => {
+  try {
+    const t = await api("/call", "POST", {service_id: $("#s-service").value, counter: $("#s-counter").value});
+    showMsg("#s-msg", "Called " + t.number + " (" + t.name + ")", true);
+    loadStaff();
+  } catch (e) { showMsg("#s-msg", e.message); }
+};
+$("#s-service").onchange = loadStaff;
+$("#s-counter").onchange = loadStaff;
+
+// ---------- Board ----------
+async function loadBoard() {
+  const b = await api("/board");
+  $("#b-grid").innerHTML = b.services.map(s =>
+    '<div class="card"><h2>' + esc(s.name) + "</h2>" +
+    (s.serving.length ? s.serving.map(x => '<div class="serve"><span>' + esc(x.number) + "</span><span>Counter " + esc(x.counter) + "</span></div>").join("") : '<div class="mute">No token being served</div>') +
+    '<p class="mute" style="margin-bottom:0">Waiting: <b>' + s.waiting + "</b></p></div>").join("");
+  $("#b-recent").innerHTML = b.recent.length
+    ? "<table>" + b.recent.map(r => "<tr><td><b>" + esc(r.number) + "</b></td><td>Counter " + esc(r.counter) + "</td><td class='mute'>" + esc(r.called_at.slice(11)) + "</td></tr>").join("") + "</table>"
+    : '<span class="mute">No calls yet today.</span>';
+  const latest = b.recent[0];
+  if (latest && latest.id !== lastCalledId) {
+    if (!firstBoard && $("#b-voice").checked && "speechSynthesis" in window) {
+      const text = "Token " + latest.number.split("").join(" ") + ", please go to counter " + latest.counter;
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    }
+    lastCalledId = latest.id;
+  }
+  firstBoard = false;
+}
+
+// ---------- Stats ----------
+async function loadStats() {
+  const s = await api("/stats");
+  const items = [["Issued today", s.issued], ["Waiting", s.waiting], ["Being served", s.serving], ["Completed", s.completed],
+                 ["Skipped", s.skipped], ["Cancelled", s.cancelled], ["Avg wait (min)", s.avg_wait_minutes], ["Avg service (min)", s.avg_service_minutes]];
+  $("#st-grid").innerHTML = items.map(i => '<div class="card stat"><span class="big">' + i[1] + '</span><span class="mute">' + i[0] + "</span></div>").join("");
+  const keys = Object.keys(s.per_service);
+  $("#st-svc").innerHTML = keys.length ? "<table>" + keys.map(k => "<tr><td>" + esc(k) + "</td><td><b>" + s.per_service[k] + "</b></td></tr>").join("") + "</table>" : '<span class="mute">No tokens yet today.</span>';
+}
+
+// ---------- Refresh loop ----------
+function refresh() {
+  const jobs = {track: loadTrack, staff: loadStaff, board: loadBoard, stats: loadStats};
+  if (jobs[current]) jobs[current]().catch(() => {});
+}
+setInterval(refresh, 3000);
+
+// ---------- Init ----------
+(async function init() {
+  try {
+    const services = await api("/services");
+    const opts = services.map(s => '<option value="' + s.id + '">' + esc(s.name) + " (" + esc(s.prefix) + ")</option>").join("");
+    $("#g-service").innerHTML = opts;
+    $("#s-service").innerHTML = opts;
+    let c = "";
+    for (let i = 1; i <= 6; i++) c += '<option value="' + i + '">Counter ' + i + "</option>";
+    $("#s-counter").innerHTML = c;
+  } catch (e) { showMsg("#g-msg", "Cannot reach server: " + e.message); }
+  const saved = localStorage.getItem("sq_token");
+  if (saved) $("#t-number").value = saved;
+  const h = location.hash.replace("#", "");
+  showTab(["get", "track", "staff", "board", "stats"].includes(h) ? h : "get");
+})();
+</script>
+</body>
+</html>
